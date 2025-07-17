@@ -1,175 +1,210 @@
-const boardElement = document.getElementById("board");
-const bombCounter = document.getElementById("bomb-counter");
-const restartBtn = document.getElementById("restart");
-const difficultySelect = document.getElementById("difficulty");
+const boardElement = document.getElementById('board');
+const bombCounter = document.getElementById('bombCounter');
+const messageElement = document.getElementById('message');
+const restartButton = document.getElementById('restart');
+const difficultySelect = document.getElementById('difficulty');
+const toggleFlagButton = document.getElementById('toggle-flag');
 
 let board = [];
-let rows = 10;
-let cols = 10;
-let numBombs = 10;
-let bombsLeft = 0;
+let rows, cols, bombCount, cellsRevealed, flagsPlaced;
 let gameOver = false;
-let rev=4;
-function getSettings() {
-  const difficulty = difficultySelect.value;
-  if (difficulty === "easy") return { rows: 8, cols: 8, bombs: 10 ,rev:4};
-  if (difficulty === "medium") return { rows: 12, cols: 12, bombs: 24, rev:7};
-  return { rows: 16, cols: 16, bombs: 45 ,rev:10};
-}
+let flagMode = false;
+
+const difficultySettings = {
+  easy: { rows: 8, cols: 8, bombs: 10, reveals: 3 },
+  medium: { rows: 12, cols: 12, bombs: 20, reveals: 5 },
+  hard: { rows: 16, cols: 16, bombs: 40, reveals: 7 }
+};
 
 function initGame() {
-  boardElement.innerHTML = "";
-  const settings = getSettings();
-  rows = settings.rows;
-  cols = settings.cols;
-  numBombs = settings.bombs;
-  bombsLeft = numBombs;
+  const { rows: r, cols: c, bombs, reveals } = difficultySettings[difficultySelect.value];
+  rows = r;
+  cols = c;
+  bombCount = bombs;
+  cellsRevealed = 0;
+  flagsPlaced = 0;
   gameOver = false;
-  board = [];
+  flagMode = false;
+  updateFlagButton();
+  messageElement.textContent = '';
 
-  boardElement.style.gridTemplateColumns = `repeat(${cols}, 30px)`;
+  board = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({
+      bomb: false,
+      revealed: false,
+      flagged: false,
+      value: 0
+    }))
+  );
 
-  // Create empty board
-  for (let r = 0; r < rows; r++) {
-    const row = [];
-    for (let c = 0; c < cols; c++) {
-      const cell = {
-        row: r,
-        col: c,
-        isBomb: false,
-        revealed: false,
-        flagged: false,
-        value: 0,
-        element: document.createElement("div"),
-      };
-      cell.element.classList.add("cell");
-      cell.element.addEventListener("click", () => handleClick(cell));
-      cell.element.addEventListener("contextmenu", e => {
-        e.preventDefault();
-        toggleFlag(cell);
-      });
-      boardElement.appendChild(cell.element);
-      row.push(cell);
-    }
-    board.push(row);
-  }
+  placeBombs();
+  computeValues();
+  renderBoard();
+  updateBombCounter();
+  autoReveal(reveals);
+}
 
-  // Place bombs
+function placeBombs() {
   let placed = 0;
-  while (placed < numBombs) {
+  while (placed < bombCount) {
     const r = Math.floor(Math.random() * rows);
     const c = Math.floor(Math.random() * cols);
-    const cell = board[r][c];
-    if (!cell.isBomb) {
-      cell.isBomb = true;
+    if (!board[r][c].bomb) {
+      board[r][c].bomb = true;
       placed++;
     }
   }
+}
 
-  // Compute values: product of squared Euclidean distances to 2 nearest bombs
+function computeValues() {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const cell = board[r][c];
-      if (cell.isBomb) continue;
-
-      const distances = [];
+      if (board[r][c].bomb) continue;
+      let distances = [];
       for (let i = 0; i < rows; i++) {
         for (let j = 0; j < cols; j++) {
-          if (board[i][j].isBomb) {
-            const distSq = (i - r) ** 2 + (j - c) ** 2;
+          if (board[i][j].bomb) {
+            let distSq = (i - r) ** 2 + (j - c) ** 2;
             distances.push(distSq);
           }
         }
       }
-
       distances.sort((a, b) => a - b);
-      cell.value = distances.length >= 2 ? distances[0] * distances[1] : distances[0] || 0;
+      board[r][c].value = distances[0] * distances[1]; // Product of 2 smallest distances
     }
   }
-
-  updateBombCounter();
-  revealRandomCellsBeforeClick(settings.rev);
 }
 
-function revealCell(cell) {
-  if (cell.revealed || cell.flagged || gameOver) return;
-  cell.revealed = true;
-  cell.element.classList.add("revealed");
+function renderBoard() {
+  boardElement.innerHTML = '';
+  boardElement.style.gridTemplateColumns = `repeat(${cols}, 30px)`;
+  boardElement.style.gridTemplateRows = `repeat(${rows}, 30px)`;
 
-  if (cell.isBomb) {
-    cell.element.classList.add("bomb");
-    endGame(false);
-  } else if (cell.value > 0) {
-    cell.element.textContent = cell.value;
-  } else {
-    // Flood reveal
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        const nr = cell.row + dr;
-        const nc = cell.col + dc;
-        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
-          revealCell(board[nr][nc]);
-        }
-      }
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+      updateCellDisplay(cell, board[r][c]);
+      cell.addEventListener('click', handleClick);
+      cell.addEventListener('contextmenu', handleRightClick);
+      boardElement.appendChild(cell);
     }
   }
-
-  checkWin();
 }
 
-function handleClick(cell) {
+function updateCellDisplay(cellElement, cellData) {
+  cellElement.textContent = '';
+  cellElement.className = 'cell';
+  if (cellData.revealed) {
+    cellElement.classList.add('revealed');
+    if (cellData.bomb) {
+      cellElement.textContent = '💣';
+    } else if (cellData.value !== 0) {
+      cellElement.textContent = cellData.value;
+    }
+  } else if (cellData.flagged) {
+    cellElement.classList.add('flagged');
+    cellElement.textContent = '🚩';
+  }
+}
+
+function handleClick(e) {
   if (gameOver) return;
-  revealCell(cell);
+  const r = +e.currentTarget.dataset.row;
+  const c = +e.currentTarget.dataset.col;
+  const cell = board[r][c];
+
+  if (cell.revealed) return;
+
+  if (flagMode || (e.pointerType === 'touch' && flagMode)) {
+    toggleFlag(r, c);
+  } else {
+    revealCell(r, c);
+  }
 }
 
-function toggleFlag(cell) {
-  if (cell.revealed || gameOver) return;
+function handleRightClick(e) {
+  e.preventDefault();
+  if (gameOver) return;
+  const r = +e.currentTarget.dataset.row;
+  const c = +e.currentTarget.dataset.col;
+  toggleFlag(r, c);
+}
+
+function toggleFlag(r, c) {
+  const cell = board[r][c];
+  if (cell.revealed) return;
   cell.flagged = !cell.flagged;
-  cell.element.classList.toggle("flagged");
-  bombsLeft += cell.flagged ? -1 : 1;
+  flagsPlaced += cell.flagged ? 1 : -1;
   updateBombCounter();
+  updateCellDisplay(getCellElement(r, c), cell);
 }
 
-function updateBombCounter() {
-  bombCounter.textContent = `Bombs left: ${bombsLeft}`;
-}
+function revealCell(r, c) {
+  const cell = board[r][c];
+  if (cell.revealed || cell.flagged) return;
+  cell.revealed = true;
+  updateCellDisplay(getCellElement(r, c), cell);
+  cellsRevealed++;
 
-function endGame(win) {
-  gameOver = true;
-  board.flat().forEach(cell => {
-    if (cell.isBomb) {
-      cell.element.classList.add("revealed", "bomb");
-    }
-  });
-  setTimeout(() => {
-    alert(win ? "You win!" : "Game over!");
-  }, 100);
-}
+  if (cell.bomb) {
+    endGame(false);
+    return;
+  }
 
-function checkWin() {
-  const allSafeRevealed = board.flat().every(cell =>
-    (cell.isBomb && !cell.revealed) || (!cell.isBomb && cell.revealed)
-  );
-  if (allSafeRevealed) {
+  if (cellsRevealed === rows * cols - bombCount) {
     endGame(true);
   }
 }
 
-function revealRandomCellsBeforeClick(count = 4) {
-  const safeCells = board.flat().filter(cell => !cell.isBomb && !cell.revealed);
-  for (let i = 0; i < count && safeCells.length > 0; i++) {
-    const idx = Math.floor(Math.random() * safeCells.length);
-    const cell = safeCells.splice(idx, 1)[0];
-    console.log(`Revealing cell at (${cell.row}, ${cell.col}) before first click.`);
-    revealCell(cell);
+function updateBombCounter() {
+  bombCounter.textContent = `Bombs left: ${bombCount - flagsPlaced}`;
+}
+
+function getCellElement(r, c) {
+  return boardElement.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+}
+
+function endGame(won) {
+  gameOver = true;
+  messageElement.textContent = won ? '🎉 You won!' : '💥 Game over!';
+  // Reveal all bombs
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = board[r][c];
+      if (cell.bomb) {
+        cell.revealed = true;
+        updateCellDisplay(getCellElement(r, c), cell);
+      }
+    }
   }
 }
 
-restartBtn.addEventListener("click", initGame);
-difficultySelect.addEventListener("change", initGame);
+function autoReveal(count) {
+  let revealed = 0;
+  while (revealed < count) {
+    const r = Math.floor(Math.random() * rows);
+    const c = Math.floor(Math.random() * cols);
+    const cell = board[r][c];
+    if (!cell.revealed && !cell.bomb) {
+      revealCell(r, c);
+      revealed++;
+    }
+  }
+}
 
-document.addEventListener("DOMContentLoaded", () => {
-  // your init code here
-  initGame();
- // Reveal 4 random safe cells before the first click
+function updateFlagButton() {
+  toggleFlagButton.textContent = `Flag Mode: ${flagMode ? 'ON' : 'OFF'}`;
+}
+
+toggleFlagButton.addEventListener('click', () => {
+  flagMode = !flagMode;
+  updateFlagButton();
 });
+
+restartButton.addEventListener('click', initGame);
+difficultySelect.addEventListener('change', initGame);
+
+initGame();
