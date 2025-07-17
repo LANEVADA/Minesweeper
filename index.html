@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Minesweeper Custom</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Minesweeper</h1>
+
+  <div id="controls">
+    <label for="difficulty">Difficulty: </label>
+    <select id="difficulty">
+      <option value="easy">Easy</option>
+      <option value="medium">Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+    <button id="restart">🔁 Restart</button>
+  </div>
+
+  <div id="status">Click a cell to start</div>
+  <div id="bomb-counter">💣 Bombs left: 10</div>
+  <div id="board"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
