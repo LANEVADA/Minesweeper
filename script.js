@@ -9,12 +9,13 @@ let cols = 10;
 let numBombs = 10;
 let bombsLeft = 0;
 let gameOver = false;
-let rev=4;
+let rev = 4;
+
 function getSettings() {
   const difficulty = difficultySelect.value;
-  if (difficulty === "easy") return { rows: 8, cols: 8, bombs: 10 ,rev:4};
-  if (difficulty === "medium") return { rows: 12, cols: 12, bombs: 24, rev:7};
-  return { rows: 16, cols: 16, bombs: 45 ,rev:10};
+  if (difficulty === "easy") return { rows: 8, cols: 8, bombs: 10, rev: 4 };
+  if (difficulty === "medium") return { rows: 12, cols: 12, bombs: 24, rev: 7 };
+  return { rows: 16, cols: 16, bombs: 45, rev: 10 };
 }
 
 function initGame() {
@@ -43,11 +44,38 @@ function initGame() {
         element: document.createElement("div"),
       };
       cell.element.classList.add("cell");
+
+      // Event listeners
       cell.element.addEventListener("click", () => handleClick(cell));
       cell.element.addEventListener("contextmenu", e => {
         e.preventDefault();
         toggleFlag(cell);
       });
+
+      // Add long tap support
+      let touchTimer = null;
+      cell.element.addEventListener("touchstart", e => {
+        e.preventDefault();
+        touchTimer = setTimeout(() => {
+          toggleFlag(cell);
+          touchTimer = null;
+        }, 500); // Long press duration
+      });
+
+      cell.element.addEventListener("touchend", () => {
+        if (touchTimer) {
+          clearTimeout(touchTimer);
+          touchTimer = null;
+        }
+      });
+
+      cell.element.addEventListener("touchmove", () => {
+        if (touchTimer) {
+          clearTimeout(touchTimer);
+          touchTimer = null;
+        }
+      });
+
       boardElement.appendChild(cell.element);
       row.push(cell);
     }
@@ -169,7 +197,5 @@ restartBtn.addEventListener("click", initGame);
 difficultySelect.addEventListener("change", initGame);
 
 document.addEventListener("DOMContentLoaded", () => {
-  // your init code here
   initGame();
- // Reveal 4 random safe cells before the first click
 });
